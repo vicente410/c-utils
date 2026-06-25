@@ -1,12 +1,11 @@
-#define STR_IMPLEMENTATION
-#include "str.h"
+#define UTILS_IMPLEMENTATION
+#include "utils.h"
 #include <stdio.h>
-#include <ctype.h>
 
 int main() {
     String_Builder sb = {};
 
-    sb_read_file(&sb, "main.c");
+    sb_read_file(&sb, "da.h");
     sb_read_file(&sb, "str.h");
 
     String_View sv = sv_from_sb(sb);
