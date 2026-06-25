@@ -4,9 +4,14 @@
 #include <ctype.h>
 
 int main() {
-    String_View sv = sv_from_cstr("Hello world, how are you doing in this fine day?");
-    while (sv.length > 0) {
-        String_View first = sv_split_delim(&sv, ' ');
-        if (first.length > 0) printf("|"SV_FMT"|\n", SV_ARG(first));
+    String_Builder sb = {};
+
+    sb_read_file(&sb, "main.c");
+    sb_read_file(&sb, "str.h");
+
+    String_View sv = sv_from_sb(sb);
+    while (sv.count > 0) {
+        String_View first = sv_trim(sv_split_delim(&sv, '\n'));
+        printf("|"SV_FMT"|\n", SV_ARG(first));
     }
 }
