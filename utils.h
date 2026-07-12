@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+// TODO: Implement parser combinators using String_View
+
 // Dynamic Array
 
 #define da_reserve(da, additional)\
@@ -76,7 +78,9 @@ bool sb_read_file(String_Builder *sb, const char *path);
 
 String_View sv_from_parts(const char *cstr, size_t count);
 String_View sv_from_cstr(const char *cstr);
+
 bool sv_eq(String_View a, String_View b);
+bool sv_eq_cstr(String_View sv, char *cstr);
 
 bool sv_starts_with(String_View sv, String_View start);
 bool sv_ends_with(String_View sv, String_View end);
@@ -170,6 +174,14 @@ bool sv_eq(String_View a, String_View b) {
     }
 
     return true;
+}
+
+bool sv_eq_cstr(String_View sv, char *cstr) {
+    for (size_t i = 0; i < sv.count; i++) {
+        if (cstr[i] == '\0' || sv.data[i] != cstr[i]) return false;
+    }
+
+    return cstr[sv.count] == '\0';
 }
 
 bool sv_starts_with(String_View sv, String_View start) {
