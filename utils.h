@@ -64,6 +64,7 @@
 #define da_append(da, other) da_append_raw((da), (other)->data, (other)->count)
 
 #define da_at(da, i) (da)->data[assert((da)->count > i), i]
+#define da_queue_at(da, i) (da)->data[assert((da)->count > i), ((da)->back + i) % (da)->capacity]
 #define da_first(da) (da)->data[assert((da)->count > 0), 0]
 #define da_last(da) (da)->data[assert((da)->count > 0), (da)->count - 1]
 #define da_pop(da) (da)->data[assert((da)->count > 0), --(da)->count]
