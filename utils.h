@@ -4,8 +4,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
 
 // TODO: Implement parser combinators using String_View
+
+#ifndef UTILS_H
+#define UTILS_H
 
 // Dynamic Array
 
@@ -57,26 +63,39 @@
 #define da_pop(da) (da)->data[assert((da)->count > 0), --(da)->count]
 #define da_foreach(x, da) for (typeof((da)->data[0]) *x = (da)->data; x < (da)->data + (da)->count; x++)
 
+// Command and Building
+typedef struct {
+    const char **data;
+    size_t count;
+    size_t capacity;
+} Cmd;
+
+#define cmd_append(cmd, ...) cmd_append_parts((cmd),\
+    sizeof((const char*[]){__VA_ARGS__})/sizeof(const char*), (const char*[]){__VA_ARGS__})
+int cmd_run(Cmd * cmd);
+bool is_older_file(const char *f1, const char *f2);
+
 // String Builder and View
 
 typedef struct {
-    char* data;
+    char *data;
     size_t count;
     size_t capacity;
 } String_Builder;
 
 typedef struct {
-    const char* data;
+    const char *data;
     size_t count;
 } String_View;
 
 #define SV_FMT "%.*s"
 #define SV_ARG(sv) (int)(sv).count, (sv).data
 
-int sb_appendf(String_Builder *sb, const char *fmt, ...);
-bool sb_read_file(String_Builder *sb, const char *path);
+int sb_appendf(String_Builder * sb, const char *fmt, ...);
+bool sb_read_file(String_Builder * sb, const char *path);
 
 String_View sv_from_parts(const char *cstr, size_t count);
+String_View sv_from_sb(String_Builder sb);
 String_View sv_from_cstr(const char *cstr);
 
 bool sv_eq(String_View a, String_View b);
@@ -99,16 +118,68 @@ String_View sv_slice(String_View sv, size_t start, size_t end);
 String_View sv_slice_start(String_View sv, size_t start);
 String_View sv_slice_end(String_View sv, size_t end);
 
-String_View sv_split_at(String_View *sv, size_t n);
-String_View sv_rsplit_at(String_View *sv, size_t n);
-String_View sv_split_delim(String_View *sv, char delim);
-String_View sv_rsplit_delim(String_View *sv, char delim);
+String_View sv_split_at(String_View * sv, size_t n);
+String_View sv_rsplit_at(String_View * sv, size_t n);
+String_View sv_split_delim(String_View * sv, char delim);
+String_View sv_rsplit_delim(String_View * sv, char delim);
 
 String_View sv_trim(String_View sv);
 String_View sv_trim_start(String_View sv);
 String_View sv_trim_end(String_View sv);
 
+#endif                          // UTILS_H
+
 #ifdef UTILS_IMPLEMENTATION
+
+void cmd_append_parts(Cmd *cmd, size_t n, const char **args) {
+    for (size_t i = 0; i < n; i++) {
+        da_push(cmd, args[i]);
+    }
+}
+
+int cmd_run(Cmd *cmd) {
+    printf("[CMD] ");
+    for (size_t i = 0; i < cmd->count; i++) {
+        printf("%s", cmd->data[i]);
+        if (i < cmd->count - 1) {
+            printf(" ");
+        } else {
+            printf("\n");
+        }
+    }
+    da_push(cmd, NULL);
+
+    pid_t pid = fork();
+
+    switch (pid) {
+    case -1:
+        perror("fork");
+        exit(1);
+    case 0:
+        execvp(cmd->data[0], (char *const *) cmd->data);
+        perror("execvp");
+        exit(1);
+    default:
+        int status;
+        wait(&status);
+
+        if (WIFEXITED(status)) {
+            cmd->count = 0;
+            return WEXITSTATUS(status);
+        } else {
+            exit(1);
+        }
+    }
+}
+
+// TODO: add error checking
+bool is_older_file(const char *f1, const char *f2) {
+    struct stat attr1, attr2;
+    stat(f1, &attr1);
+    stat(f2, &attr2);
+    return attr1.st_mtime < attr2.st_mtime;
+}
+
 int isnotspace(int c) {
     return c != ' ' && c != '\t' && c != '\n';
 }
@@ -124,7 +195,7 @@ int sb_appendf(String_Builder *sb, const char *fmt, ...) {
     char *dest = sb->data + sb->count;
 
     va_start(args, fmt);
-    vsnprintf(dest, n+1, fmt, args);
+    vsnprintf(dest, n + 1, fmt, args);
     va_end(args);
 
     sb->count += n;
@@ -134,7 +205,8 @@ int sb_appendf(String_Builder *sb, const char *fmt, ...) {
 
 bool sb_read_file(String_Builder *sb, const char *path) {
     FILE *fp = fopen(path, "r");
-    if (!fp) return -1;
+    if (!fp)
+        return -1;
 
     fseek(fp, 0, SEEK_END);
     int n = ftell(fp);
@@ -148,10 +220,8 @@ bool sb_read_file(String_Builder *sb, const char *path) {
 }
 
 String_View sv_from_parts(const char *data, size_t count) {
-    return (String_View){
-        .data = data,
-        .count = count,
-    };
+    return (String_View) {
+    .data = data,.count = count,};
 }
 
 String_View sv_from_sb(String_Builder sb) {
@@ -161,16 +231,19 @@ String_View sv_from_sb(String_Builder sb) {
 String_View sv_from_cstr(const char *cstr) {
     size_t len = 0;
 
-    while (*(cstr + len) != '\0') len++;
+    while (*(cstr + len) != '\0')
+        len++;
 
     return sv_from_parts(cstr, len);
 }
 
 bool sv_eq(String_View a, String_View b) {
-    if (a.count != b.count) return false;
+    if (a.count != b.count)
+        return false;
 
     for (size_t i = 0; i < a.count; i++) {
-        if (a.data[i] != b.data[i]) return false;
+        if (a.data[i] != b.data[i])
+            return false;
     }
 
     return true;
@@ -178,7 +251,8 @@ bool sv_eq(String_View a, String_View b) {
 
 bool sv_eq_cstr(String_View sv, char *cstr) {
     for (size_t i = 0; i < sv.count; i++) {
-        if (cstr[i] == '\0' || sv.data[i] != cstr[i]) return false;
+        if (cstr[i] == '\0' || sv.data[i] != cstr[i])
+            return false;
     }
 
     return cstr[sv.count] == '\0';
@@ -211,20 +285,23 @@ int sv_find_cstr(String_View sv, char *pattern) {
 int sv_find_nth_char(String_View sv, char pattern, int nth) {
     int count = 0;
 
-    if (nth == 0) return -1;
+    if (nth == 0)
+        return -1;
 
     if (nth > 0) {
         for (size_t i = 0; i < sv.count; i++) {
             if (sv.data[i] == pattern) {
                 count++;
-                if (count == nth) return i;
+                if (count == nth)
+                    return i;
             }
         }
     } else {
         for (int i = sv.count - 1; i >= 0; i--) {
             if (sv.data[i] == pattern) {
                 count--;
-                if (count == nth) return i;
+                if (count == nth)
+                    return i;
             }
         }
     }
@@ -235,20 +312,23 @@ int sv_find_nth_char(String_View sv, char pattern, int nth) {
 int sv_find_nth_pred(String_View sv, int (*pattern)(int), int nth) {
     int count = 0;
 
-    if (nth == 0) return -1;
+    if (nth == 0)
+        return -1;
 
     if (nth > 0) {
         for (size_t i = 0; i < sv.count; i++) {
             if (pattern(sv.data[i])) {
                 count++;
-                if (count == nth) return i;
+                if (count == nth)
+                    return i;
             }
         }
     } else {
         for (int i = sv.count - 1; i >= 0; i--) {
             if (pattern(sv.data[i])) {
                 count--;
-                if (count == nth) return i;
+                if (count == nth)
+                    return i;
             }
         }
     }
@@ -259,20 +339,23 @@ int sv_find_nth_pred(String_View sv, int (*pattern)(int), int nth) {
 int sv_find_nth_sv(String_View sv, String_View pattern, int nth) {
     int count = 0;
 
-    if (nth == 0 || pattern.count == 0) return -1;
+    if (nth == 0 || pattern.count == 0)
+        return -1;
 
     if (nth > 0) {
         for (size_t i = 0; i < sv.count - pattern.count + 1; i++) {
             if (sv_starts_with(sv_slice_end(sv, i), pattern)) {
                 count++;
-                if (count == nth) return i;
+                if (count == nth)
+                    return i;
             }
         }
     } else {
-        for (int i = sv.count; i > (int)pattern.count - 1; i--) {
+        for (int i = sv.count; i > (int) pattern.count - 1; i--) {
             if (sv_ends_with(sv_slice_start(sv, i), pattern)) {
                 count--;
-                if (count == nth) return i - pattern.count;
+                if (count == nth)
+                    return i - pattern.count;
             }
         }
     }
@@ -280,7 +363,7 @@ int sv_find_nth_sv(String_View sv, String_View pattern, int nth) {
     return -1;
 }
 
-int sv_find_nth_cstr(String_View sv, char* pattern, int nth) {
+int sv_find_nth_cstr(String_View sv, char *pattern, int nth) {
     return sv_find_nth_sv(sv, sv_from_cstr(pattern), nth);
 }
 
@@ -314,7 +397,8 @@ String_View sv_split_delim(String_View *sv, char delim) {
     String_View result = *sv;
 
     if (pos < 0) {
-        *sv = (String_View){};
+        *sv = (String_View) {
+        };
     } else {
         result = sv_slice_start(sv_split_at(sv, pos + 1), pos);
     }
@@ -327,7 +411,8 @@ String_View sv_rsplit_delim(String_View *sv, char delim) {
     String_View result = *sv;
 
     if (pos < 0) {
-        *sv = (String_View){};
+        *sv = (String_View) {
+        };
     } else {
         result = sv_slice_end(sv_rsplit_at(sv, pos), 1);
     }
@@ -346,4 +431,4 @@ String_View sv_trim_start(String_View sv) {
 String_View sv_trim_end(String_View sv) {
     return sv_slice_start(sv, sv_find_nth_pred(sv, isnotspace, -1) + 1);
 }
-#endif
+#endif                          // UTILS_IMPLEMENTATION
